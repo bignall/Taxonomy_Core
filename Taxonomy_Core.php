@@ -74,9 +74,10 @@ if ( ! class_exists( 'Taxonomy_Core' ) ) :
 		/**
 		 * Constructor. Builds our Taxonomy.
 		 * @since 0.1.0
-		 * @param mixed $taxonomy      Singular Taxonomy name, or array with Singular, Plural, and Registered
+		 *
+		 * @param mixed $taxonomy Singular Taxonomy name, or array with Singular, Plural, and Registered
 		 * @param array $arg_overrides Taxonomy registration override arguments
-		 * @param array $object_types  Post types to register this taxonomy for
+		 * @param array $object_types Post types to register this taxonomy for
 		 */
 		public function __construct( $taxonomy, $arg_overrides = array(), $object_types = array( 'post' ) ) {
 
@@ -93,7 +94,7 @@ if ( ! class_exists( 'Taxonomy_Core' ) ) :
 			}
 
 			$this->singular      = $taxonomy[0];
-			$this->plural        = ! isset( $taxonomy[1] ) || ! is_string( $taxonomy[1] ) ? $taxonomy[0] .'s' : $taxonomy[1];
+			$this->plural        = ! isset( $taxonomy[1] ) || ! is_string( $taxonomy[1] ) ? $taxonomy[0] . 's' : $taxonomy[1];
 			$this->taxonomy      = ! isset( $taxonomy[2] ) || ! is_string( $taxonomy[2] ) ? sanitize_title( $this->plural ) : $taxonomy[2];
 			$this->arg_overrides = (array) $arg_overrides;
 			$this->object_types  = (array) $object_types;
@@ -134,8 +135,8 @@ if ( ! class_exists( 'Taxonomy_Core' ) ) :
 				'no_terms'                   => sprintf( __( 'No %s', 'taxonomy-core' ), $this->plural ),
 
 				// Hierarchical stuff
-				'parent_item'       => $hierarchical ? sprintf( __( 'Parent %s', 'taxonomy-core' ), $this->singular ) : null,
-				'parent_item_colon' => $hierarchical ? sprintf( __( 'Parent %s:', 'taxonomy-core' ), $this->singular ) : null,
+				'parent_item'                => $hierarchical ? sprintf( __( 'Parent %s', 'taxonomy-core' ), $this->singular ) : null,
+				'parent_item_colon'          => $hierarchical ? sprintf( __( 'Parent %s:', 'taxonomy-core' ), $this->singular ) : null,
 
 				// Non-hierarchical stuff
 				'popular_items'              => $hierarchical ? null : sprintf( __( 'Popular %s', 'taxonomy-core' ), $this->plural ),
@@ -182,7 +183,9 @@ if ( ! class_exists( 'Taxonomy_Core' ) ) :
 		/**
 		 * Provides access to protected class properties.
 		 * @since  0.1.0
+		 *
 		 * @param  string $key Specific taxonomy parameter to return
+		 *
 		 * @return mixed       Specific taxonomy parameter or array of singular, plural and registered name
 		 */
 		public function taxonomy( $key = 'taxonomy' ) {
@@ -198,13 +201,16 @@ if ( ! class_exists( 'Taxonomy_Core' ) ) :
 		/**
 		 * Provides access to all Taxonomy_Core taxonomy objects registered via this class.
 		 * @since  0.1.0
+		 *
 		 * @param  string $taxonomy Specific Taxonomy_Core object to return, or 'true' to specify only names.
+		 *
 		 * @return mixed            Specific Taxonomy_Core object or array of all
 		 */
 		public static function taxonomies( $taxonomy = '' ) {
 			if ( true === $taxonomy && ! empty( self::$taxonomies ) ) {
 				return array_keys( self::$taxonomies );
 			}
+
 			return isset( self::$taxonomies[ $taxonomy ] ) ? self::$taxonomies[ $taxonomy ] : self::$taxonomies;
 		}
 
@@ -228,9 +234,127 @@ if ( ! class_exists( 'Taxonomy_Core' ) ) :
 			}
 
 			$locale = apply_filters( 'plugin_locale', get_locale(), 'taxonomy-core' );
-			$mofile = dirname( __FILE__ ) . '/languages/taxonomy-core-'. $locale .'.mo';
+			$mofile = dirname( __FILE__ ) . '/languages/taxonomy-core-' . $locale . '.mo';
 			load_textdomain( 'taxonomy-core', $mofile );
 		}
+
+		/**
+		 * Check if term exists
+		 *
+		 * @param string $name name of the term
+		 * @param int $parent parent id under which to confine the search
+		 *
+		 * @return mixed result from term_exists (see https://developer.wordpress.org/reference/functions/term_exists/)
+		 */
+		public function term_exists( $name, $parent = 0 ) {
+			return term_exists( $name, $this->taxonomy, $parent );
+		}
+
+		/**
+		 * Add term
+		 *
+		 * @param string $name name of term
+		 * @param array $args args to pass to wp_insert_term
+		 *
+		 * @return mixed result from wp_insert_term (see https://developer.wordpress.org/reference/functions/wp_insert_term/)
+		 */
+		public function add_term( $name, $args = array() ) {
+			return wp_insert_term( $name, $this->taxonomy, $args );
+		}
+
+
+		/**
+		 * Update term
+		 *
+		 * @param int $id id of the term
+		 * @param array $args args to pass to wp_update_term
+		 *
+		 * @return mixed result from wp_update_term (see https://developer.wordpress.org/reference/functions/wp_update_term/)
+		 */
+		public function update_term( $id, $args = array() ) {
+			return wp_update_term( $id, $this->taxonomy, $args );
+		}
+
+		/**
+		 * Check if a term exists and add it if it doesn't and update it
+		 *
+		 * @param string $name name of term
+		 * @param array $args args to pass to $this->add_term and $this->update_term - parent may be changed by setting 'old_parent'
+		 *
+		 * @return mixed result from $this->update_term or null if term didn't exist and couldn't be added
+		 */
+		public function check_and_update_term( $name, $args = array() ) {
+			$parent = isset( $args['old_parent'] ) ? $args['old_parent'] : ( isset( $args['parent'] ) ? $args['parent'] : 0 );
+			$ids    = $this->term_exists( $name, $parent );
+			if ( $ids === null ) {
+				$ids = $this->add_term( $name, $args );
+				if ( $ids === null ) {
+					return null;
+				}
+
+				return $this->update_term( $ids['term_id'], $args );
+			} else {
+				return $this->update_term( $ids['term_id'], $args );
+			}
+		}
+
+		/**
+		 * Check and update an array of terms
+		 *
+		 * @param array $terms array of ('name' => string, 'args' => args to pass to $this->check_and_update_term)
+		 *
+		 * @return array of [name] => result of check_and_update_term
+		 */
+		public function check_and_update_terms( array $terms ) {
+			$result = array();
+			foreach ( $terms as $term ) {
+				$name = isset( $term['name'] ) ? $term['name'] : null;
+				if ( $name === null ) {
+					continue;
+				}
+				$result[ $name ] = $this->check_and_update_term( $name, $term['args'] );
+			}
+
+			return $result;
+		}
+
+		/**
+		 * Check and add term
+		 *
+		 * @param $name name of term
+		 * @param array $args args to pass to $this->add_term
+		 *
+		 * @return mixed result of $this->add_term or result of $this->term_exists if term already exists
+		 */
+		public function check_and_add_term( $name, $args = array() ) {
+			$ids = $this->term_exists( $name, isset( $args['parent'] ) ? $args['parent'] : 0 );
+			if ( $ids === null ) {
+				return $this->add_term( $name, $args );
+			}
+
+			return $ids;
+		}
+
+		/**
+		 * Check and add an array of terms
+		 *
+		 * @param array $terms array of ('name' => string, 'args' => args to pass to $this->check_and_add_term)
+		 *
+		 * @return array of [name] => result of $this->check_and_add_term
+		 */
+		public function check_and_add_terms( array $terms ) {
+			$result = array();
+			foreach ( $terms as $term ) {
+				$name = isset( $term['name'] ) ? $term['name'] : null;
+				if ( $name === null ) {
+					continue;
+				}
+				$result[ $name ] = $this->check_and_add_term( $name, $term['args'] );
+			}
+
+			return $result;
+		}
+
 
 	}
 
@@ -238,9 +362,11 @@ if ( ! class_exists( 'Taxonomy_Core' ) ) :
 		/**
 		 * Helper function to register a Taxonomy via the Taxonomy_Core class.
 		 * @since  0.1.0
-		 * @param  mixed $taxonomy      Singular Taxonomy name, or array with Singular, Plural, and Registered
+		 *
+		 * @param  mixed $taxonomy Singular Taxonomy name, or array with Singular, Plural, and Registered
 		 * @param  array $arg_overrides Taxonomy registration override arguments
-		 * @param  array $object_types  Post types to register this taxonomy for
+		 * @param  array $object_types Post types to register this taxonomy for
+		 *
 		 * @return Taxonomy_Core        An instance of the class.
 		 */
 		function register_via_taxonomy_core( $taxonomy, $arg_overrides = array(), $object_types = array( 'post' ) ) {
